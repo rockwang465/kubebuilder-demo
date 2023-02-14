@@ -1,0 +1,2 @@
+# kubebuilder-demo
+operator development
