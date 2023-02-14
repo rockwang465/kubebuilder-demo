@@ -29,7 +29,12 @@ type AppSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of App. Edit app_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	//Foo string `json:"foo,omitempty"`
+	// 1.1 修改spec入口(其中Image、Replicas、EnableService为必须设置的属性，EnableIngress可以为空.)
+	EnableIngress bool   `json:"enable_ingress,omitempty"`
+	EnableService bool   `json:"enable_service"`
+	Replicas      int32  `json:"replicas"`
+	Image         string `json:"image"`
 }
 
 // AppStatus defines the observed state of App
