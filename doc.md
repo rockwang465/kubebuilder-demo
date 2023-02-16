@@ -228,3 +228,18 @@ spec:
   enable_service: true  #成功
 ```
 
+## 2.7 add rbac permission
+```
+# vim controller/app_controller.go
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+```
+
+## 2.8 apply app resource
+```
+# kubectl apply -f config/samples/ingress_v1beta1_app.yaml
+# kubectl get app
+NAME         AGE
+app-sample   1m
+```
