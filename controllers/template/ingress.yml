@@ -15,4 +15,4 @@ spec:
                 name: {{.ObjectMeta.Name}}
                 port:
                   number: 8080
-  ingressClassName: nginx-ingress
+  ingressClassName: traefik

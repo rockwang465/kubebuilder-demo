@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -57,6 +58,7 @@ type AppReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	fmt.Println("join to Reconcile ===========>")
 	// 1.2 实例化logger和app
 	logger := log.FromContext(ctx)
 	// TODO(user): your logic here
@@ -74,49 +76,49 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// 我们的deployment、service、ingress都放在了controllers/template中，通过 utils来完成上述过程。
 
 	// 根据app的配置进行处理
-	//// 1.4.1 Deployment的处理
-	//// 1.4.1.1 生成deployment yaml模板
-	//deployment := utils.NewDeployment(app)
-	//fmt.Printf("deployment: ==> %#v\n", deployment)
-	//
-	//// 1.4.1.2 设置为OwnerReference
-	//// SetControllerReference将owner设置为Controller OwnerReference。
-	//// 这用于受控对象的垃圾收集，以及调整所有者对象对受控对象的更改(使用Watch + EnqueueRequestForOwner)。
-	//// 由于只有一个OwnerReference可以是控制器，如果有另一个OwnerReference设置了controller标志，它将返回一个错误。
-	//err = controllerutil.SetControllerReference(app, deployment, r.Scheme)
-	//if err != nil {
-	//	return ctrl.Result{}, err
-	//}
-	//
-	//// 1.4.1.3 查找同名的deployment，不存在则创建，存在则更新
-	//d := &v1.Deployment{}
-	////err = r.Get(ctx, req.NamespacedName, d)
-	//err = r.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, d)
-	//if err != nil {
-	//	// 如果不存在则创建
-	//	if errors.IsNotFound(err) {
-	//		if err = r.Create(ctx, deployment); err != nil {
-	//			logger.Error(err, "create deployment failed")
-	//			return ctrl.Result{}, err
-	//		}
-	//	} else {
-	//		return ctrl.Result{}, err
-	//	}
-	//} else {
-	//	// 如果存在则更新
-	//
-	//	//Bug: 这里会反复触发更新
-	//	//原因：在148行SetupWithManager方法中，监听了Deployment，所以只要更新Deployment就会触发
-	//	//     此处更新和controllerManager更新Deployment都会触发更新事件，导致循环触发
-	//	//修复方法：
-	//	//方式1. 注释掉在148行SetupWithManager方法中对Deployment，Ingress，Service等的监听，该处的处理只是为了
-	//	//      手动删除Deployment等后能够自动重建，但正常不会出现这种情况，是否需要根据情况而定
-	//	//方式2. 加上判断条件，仅在app.Spec.Replicas != deployment.Spec.Replicas &&
-	//	//      app.Spec.Image != deployment.Spec.Template.Spec.Containers[0].Image时才更新deployment
-	//	if err = r.Update(ctx, deployment); err != nil {
-	//		return ctrl.Result{}, err
-	//	}
-	//}
+	// 1.4.1 Deployment的处理
+	// 1.4.1.1 生成deployment yaml模板
+	deployment := utils.NewDeployment(app)
+	fmt.Printf("deployment: ==> %#v\n", deployment)
+
+	// 1.4.1.2 设置为OwnerReference
+	// SetControllerReference将owner设置为Controller OwnerReference。
+	// 这用于受控对象的垃圾收集，以及调整所有者对象对受控对象的更改(使用Watch + EnqueueRequestForOwner)。
+	// 由于只有一个OwnerReference可以是控制器，如果有另一个OwnerReference设置了controller标志，它将返回一个错误。
+	err = controllerutil.SetControllerReference(app, deployment, r.Scheme)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 1.4.1.3 查找同名的deployment，不存在则创建，存在则更新
+	d := &v1.Deployment{}
+	//err = r.Get(ctx, req.NamespacedName, d)
+	err = r.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, d)
+	if err != nil {
+		// 如果不存在则创建
+		if errors.IsNotFound(err) {
+			if err = r.Create(ctx, deployment); err != nil {
+				logger.Error(err, "create deployment failed")
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, err
+		}
+	} else {
+		// 如果存在则更新
+
+		//Bug: 这里会反复触发更新
+		//原因：在148行SetupWithManager方法中，监听了Deployment，所以只要更新Deployment就会触发
+		//     此处更新和controllerManager更新Deployment都会触发更新事件，导致循环触发
+		//修复方法：
+		//方式1. 注释掉在148行SetupWithManager方法中对Deployment，Ingress，Service等的监听，该处的处理只是为了
+		//      手动删除Deployment等后能够自动重建，但正常不会出现这种情况，是否需要根据情况而定
+		//方式2. 加上判断条件，仅在app.Spec.Replicas != deployment.Spec.Replicas &&
+		//      app.Spec.Image != deployment.Spec.Template.Spec.Containers[0].Image时才更新deployment
+		if err = r.Update(ctx, deployment); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	// 1.4.2 Service的处理
 	// 生成模板、设置OwnerReference
@@ -195,7 +197,7 @@ func (r *AppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// 需要监测哪个资源,就要用Owns()去watch哪个资源.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ingressv1beta1.App{}).
-		//Owns(&v1.Deployment{}).
+		Owns(&v1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&netv1.Ingress{}).
 		Complete(r)

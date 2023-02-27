@@ -1,4 +1,4 @@
-# 1 init command
+# 1 generate code
 ```
 # kubebuilder init --domain baiding.tech
 # kubebuilder create api --group ingress --version v1beta1 --kind App
@@ -26,6 +26,10 @@ type AppSpec struct {
 ```
 # go mod tidy
 # make manifests
+test -s /data/gopath/src/github.com/rockwang465.com/kubebuilder-demo/bin/controller-gen && /data/gopath/src/github.com/rockwang465.com/kubebuilder-demo/bin/controller-gen --version | grep -q v0.11.1 || \
+GOBIN=/data/gopath/src/github.com/rockwang465.com/kubebuilder-demo/bin go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.11.1
+/data/gopath/src/github.com/rockwang465.com/kubebuilder-demo/bin/controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+
 ```
 
 ## 2.3 add template files
@@ -88,10 +92,11 @@ spec:
                 name: {{.ObjectMeta.Name}}
                 port:
                   number: 8080
-  ingressClassName: nginx-ingress
+  ingressClassName: nginx
 ```
 
 ## 2.4 add logic in Reconcile
+### 2.4.1 configuration business logic
 ```
 # vim controller/app_controller.go
 func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -107,7 +112,6 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
     //之前我们创建资源对象时，都是通过构造golang的struct来构造，但是对于复杂的资源对象 这样做费时费力，所以，我们可以先将资源定义为go template，然后替换需要修改的值之后， 反序列号为golang的struct对象，然后再通过client-go帮助我们创建或更新指定的资源。
     //我们的deployment、service、ingress都放在了controllers/template中，通过 utils来完成上述过程。
 	//根据app的配置进行处理
-	//1. Deployment的处理
 	deployment := utils.NewDeployment(app)
 	if err := controllerutil.SetControllerReference(app, deployment, r.Scheme); err != nil {
 		return ctrl.Result{}, err
@@ -191,6 +195,7 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	... ...
 ```
 
+### 2.4.2 watch resources
 ```
 //删除service、ingress、deployment时，自动重建
 func (r *AppReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -203,7 +208,19 @@ func (r *AppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 ```
 
-## 2.5 apply crd resource
+## 2.5 install traefik(未安装)
+```
+# helm repo add traefik https://helm.traefik.io/traefik
+# cat <<EOF>> traefik_values.yaml
+ingressClass:
+  enabled: true
+  isDefaultClass: true #指定为默认的ingress
+EOF
+
+# helm install traefik traefik/traefik -f traefik_values.yaml 
+```
+
+## 2.6 apply crd resource
 ```
 # make install
 /data/gopath/src/kubebuilder-demo-test/bin/controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -217,29 +234,61 @@ customresourcedefinition.apiextensions.k8s.io/apps.ingress.baiding.tech created
 apps.ingress.baiding.tech                                       2023-02-16T02:54:35Z
 ```
 
-## 2.6 modify config
+## 2.7 modify config
 ```
 # vim config/samples/ingress_v1beta1_app.yaml
 spec:
   # TODO(user): Add fields here
   image: nginx:latest
   replicas: 3
-  enable_ingress: false #会被修改为true
-  enable_service: true  #成功
+  enable_ingress: false # 会被修改为true
+  enable_service: false # 成功
 ```
 
 ## 2.7 add rbac permission
 ```
-# vim controller/app_controller.go
+# vim controllers/app_controller.go
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 ```
 
-## 2.8 apply app resource
+## 2.8 apply app resource and run controller
 ```
 # kubectl apply -f config/samples/ingress_v1beta1_app.yaml
-# kubectl get app
+# kubectl get apps.ingress.baiding.tech
 NAME         AGE
 app-sample   1m
+
+# go run main.go
+当前我卡在这里了，有报错
+
+# kubectl get deploy
+NAME         READY     UP-TO-DATE  AVAILABLE  AGE
+app-sample   3/3       3           3          4m44s
+```
+
+## 2.9 test
+```
+# vim config/samples/ingress_v1beta1_app.yaml
+spec:
+  # TODO(user): Add fields here
+  image: nginx:latest
+  replicas: 2  # 将副本数改为2，来测试效果
+  enable_ingress: true  # 开启ingress
+  enable_service: true  # 开启service
+
+# kubectl apply -f config/samples/ingress_v1beta1_app.yaml
+
+# kubectl get deploy # 发现副本数会有更新
+NAME         READY     UP-TO-DATE  AVAILABLE  AGE
+app-sample   3/2       3           3          4m44s
+
+# kubectl get svc  # service也马上生成了
+NAME         TYPE       CLUSTER-IP     EXTERNAL-IP  PORT(S)   AGE
+app-sample   ClusterIP  10.97.226.194  <none>       8080/TCP  6s
+
+# kubectl get ingress  # ingress也马上生成了
+NAME         TYPE       HOSTS                    ADDRESS     PORT(S)   AGE
+app-sample   traefik    app-sample.baiding.tech              80        6s
 ```
